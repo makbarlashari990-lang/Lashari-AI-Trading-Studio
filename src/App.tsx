@@ -44,6 +44,7 @@ import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, db 
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { User } from 'firebase/auth';
 import { Signal } from './types';
+import { io } from 'socket.io-client';
 import { TradingViewChart } from './components/TradingViewChart';
 import { LiveMonitor } from './components/LiveMonitor';
 import { NewsSentiment } from './components/NewsSentiment';
@@ -282,6 +283,36 @@ export default function App() {
   const [marketCategory, setMarketCategory] = useState<'crypto' | 'forex'>('forex');
   const [searchQuery, setSearchQuery] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [socket, setSocket] = useState<any>(null);
+  const [isSocketConnected, setIsSocketConnected] = useState(false);
+
+  useEffect(() => {
+    const newSocket = io(window.location.origin);
+    setSocket(newSocket);
+    
+    newSocket.on("connect", () => {
+      console.log("Connected to Real-time Neural Bridge");
+      setIsSocketConnected(true);
+    });
+
+    newSocket.on("disconnect", () => {
+      setIsSocketConnected(false);
+    });
+
+    newSocket.on("price_update", (data: Record<string, number>) => {
+      setSignals(prev => prev.map(s => {
+        if (data[s.asset]) {
+          return { ...s, currentPrice: data[s.asset] };
+        }
+        return s;
+      }));
+    });
+
+    return () => {
+      newSocket.disconnect();
+    };
+  }, []);
+
   const [analysisData, setAnalysisData] = useState<{
     sentiment: 'bullish' | 'bearish';
     structure: string;
@@ -354,7 +385,7 @@ export default function App() {
       tp2: tp2Val.toFixed(config.precision), 
       tp3: tp3Val.toFixed(config.precision), 
       stop,
-      currentPrice: entryVal.toFixed(config.precision)
+      currentPrice: parseFloat(entryVal.toFixed(config.precision))
     };
   };
 
@@ -364,7 +395,7 @@ export default function App() {
       setSignals(prev => prev.map(s => {
         if (s.isConfirmed || s.status === 'executed') return s;
 
-        const newProgress = Math.min(100, s.verificationProgress + Math.floor(Math.random() * 15) + 5);
+        const newProgress = Math.min(100, (s.verificationProgress || 0) + Math.floor(Math.random() * 15) + 5);
         const factors = { ...s.factors };
         
         if (newProgress > 25) factors.structure = 'confirming';
@@ -379,9 +410,17 @@ export default function App() {
 
         const isFullyConfirmed = newProgress === 100;
         
+        let verificationStep = 'Finalizing...';
+        if (newProgress < 30) verificationStep = 'Analyzing Order Flow...';
+        else if (newProgress < 50) verificationStep = 'Scanning Liquidity...';
+        else if (newProgress < 70) verificationStep = 'RSI Div Validation...';
+        else if (newProgress < 90) verificationStep = 'Bias Confirmation...';
+        else if (newProgress === 100) verificationStep = 'Verified';
+
         return {
           ...s,
           verificationProgress: newProgress,
+          verificationStep,
           factors,
           isConfirmed: isFullyConfirmed,
           status: isFullyConfirmed ? 'active' : 'pending',
@@ -391,30 +430,6 @@ export default function App() {
       }));
     }, 4000);
     return () => clearInterval(verifyInterval);
-  }, []);
-
-  // Price Simulation Effect - Updates signal prices in real-time
-  useEffect(() => {
-    const priceInterval = setInterval(() => {
-      setSignals(prev => prev.map(s => {
-        const config = ASSET_CONFIGS[s.asset];
-        if (!config) return s;
-        
-        const current = s.currentPrice ? parseFloat(s.currentPrice) : config.base;
-        
-        // Apply directional bias for active/executed signals to simulate market movement
-        const biasFactor = (s.status === 'active' || s.status === 'executed') 
-          ? (s.bias === 'bullish' ? 0.008 : -0.008) 
-          : 0;
-          
-        const randomWalk = (Math.random() - 0.5) * (config.volatility * 0.05);
-        const change = randomWalk + (biasFactor * config.volatility);
-        const newPrice = (current + change).toFixed(config.precision);
-        
-        return { ...s, currentPrice: newPrice };
-      }));
-    }, 2500);
-    return () => clearInterval(priceInterval);
   }, []);
 
   useEffect(() => {
@@ -428,6 +443,7 @@ export default function App() {
         executionLabel: 'Executed Entry',
         isConfirmed: true,
         verificationProgress: 100,
+        verificationStep: 'Verified',
         confirmationReason: 'Wave 5 + RSI Div Exhaustion',
         reason: 'Move 5 completed with clear RSI divergence. Institutional capping confirmed at current value levels.',
         vsaReason: 'Stopping Volume + Bag Holding signature detected on Wave 5.',
@@ -442,6 +458,7 @@ export default function App() {
         executionLabel: 'Signal Received Now',
         isConfirmed: false,
         verificationProgress: 45,
+        verificationStep: 'Scanning Liquidity...',
         reason: 'Move 4 complete. Waiting for Move 5 thrust into supply zone with RSI divergence confirmation.',
         factors: { structure: 'confirming', waves: 'confirming', cabling: 'weak', levels: 'strong' }
       },
@@ -454,6 +471,7 @@ export default function App() {
         executionLabel: 'Entry is Active',
         isConfirmed: true,
         verificationProgress: 100,
+        verificationStep: 'Verified',
         confirmationReason: 'Move 1-5 Cycle Complete + RSI Div',
         reason: 'Institutional accumulation completed during the Wave 5 sweep of Asian lows.',
         vsaReason: 'No Supply Test confirmed after Move 5 exhaustion.',
@@ -516,6 +534,7 @@ export default function App() {
         executionLabel: 'Analyzing Confluences...',
         isConfirmed: false,
         verificationProgress: 15,
+        verificationStep: 'Analyzing Order Flow...',
         reason: reasons[Math.floor(Math.random() * reasons.length)],
         vsaReason: newType === 'VSA' ? vsaReasons[Math.floor(Math.random() * vsaReasons.length)] : undefined,
         ...getLevels(newAsset, newBias),
@@ -1186,8 +1205,8 @@ is_strong_breakout_bear = not use_anti_fake or (body_perc >= min_body_perc and (
 wick_top_perc = candle_range != 0 ? ((high - math.max(open, close)) / candle_range) * 100 : 0
 wick_btm_perc = candle_range != 0 ? ((math.min(open, close) - low) / candle_range) * 100 : 0
 
-is_fbo_bull_val = show_fbo and high > last_hi and close < last_hi and not is_bos_bullish and wick_top_perc >= min_fbo_wick
-is_fbo_bear_val = show_fbo and low < last_lo and close > last_lo and not is_bos_bearish and wick_btm_perc >= min_fbo_wick
+is_fbo_bull_val = show_fbo and high > last_hi and close < last_hi and close[1] < last_hi and not is_bos_bullish and wick_top_perc >= min_fbo_wick
+is_fbo_bear_val = show_fbo and low < last_lo and close > last_lo and close[1] > last_lo and not is_bos_bearish and wick_btm_perc >= min_fbo_wick
 
 plotshape(is_fbo_bull_val, "Fake Bullish Breakout", shape.labeldown, location.abovebar, color.new(color.red, 30), size=size.tiny, text="FBO_BULL", textcolor=color.white)
 plotshape(is_fbo_bear_val, "Fake Bearish Breakout", shape.labelup, location.belowbar, color.new(color.green, 30), size=size.tiny, text="FBO_BEAR", textcolor=color.white)
@@ -1941,7 +1960,7 @@ alertcondition(alert_rsi_div and bear_hid_div, "RSI: Bearish Hidden Divergence",
                        { label: 'Institutional OB', active: simulation.factors.ob, color: bullishObColor }
                      ].map((f, i) => (
                        <div 
-                         key={`logic-clearance-step-${i}`}
+                         key={`clearance-step-${i}`}
                          className="p-4 rounded-3xl border flex flex-col items-center justify-center gap-3 transition-all duration-500"
                          style={{ 
                            backgroundColor: f.active ? `${f.color}1a` : 'rgba(39, 39, 42, 0.1)',
@@ -2194,7 +2213,7 @@ alertcondition(alert_rsi_div and bear_hid_div, "RSI: Bearish Hidden Divergence",
                               { name: 'Cyan', color: '#06b6d4' }
                             ].map((c) => (
                               <button
-                                key={c.color}
+                                key={`hv-color-${c.color}`}
                                 onClick={() => setHighVolColor(c.color)}
                                 className={`flex-1 h-6 rounded-lg transition-all border-2 ${highVolColor === c.color ? 'border-white scale-110 shadow-lg' : 'border-transparent'}`}
                                 style={{ backgroundColor: c.color }}
@@ -2393,7 +2412,7 @@ alertcondition(alert_rsi_div and bear_hid_div, "RSI: Bearish Hidden Divergence",
                               { name: 'Cyan', color: '#06b6d4' }
                             ].map((c) => (
                               <button
-                                key={c.color}
+                                key={`bull-color-${c.color}`}
                                 onClick={() => setBullishObColor(c.color)}
                                 className={`flex-1 h-6 rounded-lg transition-all border-2 ${bullishObColor === c.color ? 'border-white scale-110 shadow-lg' : 'border-transparent'}`}
                                 style={{ backgroundColor: c.color }}
@@ -2422,7 +2441,7 @@ alertcondition(alert_rsi_div and bear_hid_div, "RSI: Bearish Hidden Divergence",
                               { name: 'Purple', color: '#a855f7' }
                             ].map((c) => (
                               <button
-                                key={c.color}
+                                key={`bear-color-${c.color}`}
                                 onClick={() => setBearishObColor(c.color)}
                                 className={`flex-1 h-6 rounded-lg transition-all border-2 ${bearishObColor === c.color ? 'border-white scale-110 shadow-lg' : 'border-transparent'}`}
                                 style={{ backgroundColor: c.color }}
@@ -2885,6 +2904,7 @@ alertcondition(alert_rsi_div and bear_hid_div, "RSI: Bearish Hidden Divergence",
                 bearishColor={bearishObColor}
                 highVolColor={highVolColor}
                 signals={signals}
+                isSocketConnected={isSocketConnected}
               />
               <div className="relative">
                 <TradingViewChart 
@@ -2895,6 +2915,9 @@ alertcondition(alert_rsi_div and bear_hid_div, "RSI: Bearish Hidden Divergence",
                   pktTime={pktTime}
                   activeSignal={signals.find(s => s.symbol === activeSymbol)}
                   isAnalyzing={isAnalyzing}
+                  highVolHighlight={highVolHighlight}
+                  highVolColor={highVolColor}
+                  isSocketConnected={isSocketConnected}
                 />
 
                 {/* Neural Terminal Output */}
@@ -3028,7 +3051,7 @@ alertcondition(alert_rsi_div and bear_hid_div, "RSI: Bearish Hidden Divergence",
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {FEATURES.map((feature) => (
-                <div key={feature.title} className="p-8 rounded-3xl bg-zinc-900/50 border border-zinc-800 hover:border-emerald-500/30 transition-all group">
+                <div key={`feat-${feature.title.replace(/\s+/g, '-')}`} className="p-8 rounded-3xl bg-zinc-900/50 border border-zinc-800 hover:border-emerald-500/30 transition-all group">
                   <div className={`w-12 h-12 rounded-2xl ${feature.color} flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}>
                     {feature.icon}
                   </div>

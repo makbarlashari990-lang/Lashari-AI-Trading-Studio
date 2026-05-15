@@ -21,6 +21,8 @@ interface Signal {
   status: 'active' | 'pending' | 'executed';
   executionLabel: string; // "Signal Received now", "Entry is Active", "Executed Entry"
   verificationProgress: number; // 0-100
+  verificationStep?: string;
+  currentPrice?: number;
   reason: string;
   vsaReason?: string;
   confirmationReason?: string;
@@ -41,6 +43,7 @@ interface LiveMonitorProps {
   bearishColor: string;
   highVolColor: string;
   signals: Signal[];
+  isSocketConnected?: boolean;
 }
 
 const ASSET_MAP: Record<string, string> = {
@@ -61,7 +64,8 @@ export const LiveMonitor: React.FC<LiveMonitorProps> = ({
   bullishColor,
   bearishColor,
   highVolColor,
-  signals
+  signals,
+  isSocketConnected = false
 }) => {
   const [activeCount, setActiveCount] = useState(124);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -88,7 +92,15 @@ export const LiveMonitor: React.FC<LiveMonitorProps> = ({
             <div className="p-3 bg-emerald-500/10 rounded-2xl">
               <Radar className="w-5 h-5 text-emerald-400 animate-pulse" />
             </div>
-            <span className="text-[10px] font-black text-emerald-500/50 tracking-[0.2em] uppercase">Status: Scanner Active</span>
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] font-black text-emerald-500/50 tracking-[0.2em] uppercase">Status: Scanner Active</span>
+              {isSocketConnected && (
+                <div className="flex items-center gap-1.5 px-2 py-0.5 mt-1 rounded-full bg-blue-500/10 border border-blue-500/20">
+                   <div className="w-1 h-1 rounded-full bg-blue-500" />
+                   <span className="text-[7px] font-black text-blue-400 uppercase tracking-tighter">WS LIVE FEED</span>
+                </div>
+              )}
+            </div>
           </div>
           <h4 className="text-zinc-500 text-xs font-bold uppercase tracking-wider mb-1">AI Nodes Scanning</h4>
           <div className="text-3xl font-black text-white mb-4 font-mono">{activeCount.toLocaleString()}</div>
@@ -143,9 +155,9 @@ export const LiveMonitor: React.FC<LiveMonitorProps> = ({
 
         <div className="space-y-3">
           <AnimatePresence mode="popLayout">
-            {(signalLimit === 'all' ? signals : signals.slice(0, signalLimit)).map((signal) => (
+            {(signalLimit === 'all' ? signals : signals.slice(0, signalLimit)).map((signal, index) => (
               <motion.div
-                key={signal.id}
+                key={`${signal.id}-${index}`}
                 layout
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -166,6 +178,11 @@ export const LiveMonitor: React.FC<LiveMonitorProps> = ({
                   <div className="flex items-center gap-6">
                     <div className="w-24 relative">
                       <span className="text-xs font-black text-white tracking-widest">{signal.asset}</span>
+                      {signal.status === 'pending' && (
+                        <div className="absolute -right-2 top-0">
+                          <Radar size={10} className="text-amber-400 animate-pulse" />
+                        </div>
+                      )}
                       {signal.isConfirmed && (
                         <div className="absolute -top-1.5 -left-1.5">
                            <div className="p-1 rounded-md bg-emerald-500 shadow-lg shadow-emerald-500/50">
@@ -187,23 +204,44 @@ export const LiveMonitor: React.FC<LiveMonitorProps> = ({
                         : (signal.bias === 'bullish' ? 'BULLISH' : 'BEARISH')}
                     </div>
 
-                    <div className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-tighter border flex items-center gap-1.5 shadow-sm transition-all duration-300 ${
+                    <div className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-tighter border flex flex-col gap-1 shadow-sm transition-all duration-300 ${
                       signal.status === 'executed' 
                         ? 'bg-indigo-500/40 text-indigo-100 border-indigo-400/50 shadow-indigo-500/20 ring-1 ring-indigo-500/20 scale-[1.02]' 
                         : signal.status === 'active' 
                           ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' 
                           : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
                     }`}>
-                      <div className={`w-1 h-1 rounded-full ${
-                        signal.status === 'executed' ? 'bg-indigo-300 shadow-[0_0_8px_rgba(165,180,252,0.8)]' :
-                        signal.status === 'active' ? 'bg-emerald-400 animate-pulse' : 
-                        'bg-amber-400 animate-pulse'
-                      }`} />
-                      {signal.executionLabel}
-                      {signal.status === 'executed' && (
-                        <span className="ml-1.5 pl-1.5 border-l border-indigo-400/30 text-indigo-200 font-mono">
-                          @{signal.entry}
-                        </span>
+                      <div className="flex items-center gap-1.5">
+                        <div className={`w-1 h-1 rounded-full ${
+                          signal.status === 'executed' ? 'bg-indigo-300 shadow-[0_0_8px_rgba(165,180,252,0.8)]' :
+                          signal.status === 'active' ? 'bg-emerald-400 animate-pulse' : 
+                          'bg-amber-400'
+                        }`} />
+                        {signal.executionLabel}
+                        {signal.status === 'executed' && (
+                          <span className="ml-1.5 pl-1.5 border-l border-indigo-400/30 text-indigo-200 font-mono">
+                            @{signal.entry}
+                          </span>
+                        )}
+                      </div>
+                      {signal.status === 'pending' && (
+                        <div className="flex flex-col gap-1 mt-0.5">
+                          <div className="flex items-center justify-between gap-2">
+                             <span className="text-[7px] font-bold text-amber-200/70 truncate animate-pulse">
+                               {signal.verificationStep}
+                             </span>
+                             <span className="text-[7px] font-black text-amber-400">
+                               {signal.verificationProgress}%
+                             </span>
+                          </div>
+                          <div className="w-full h-0.5 bg-amber-500/20 rounded-full overflow-hidden">
+                            <motion.div 
+                              initial={{ width: 0 }}
+                              animate={{ width: `${signal.verificationProgress}%` }}
+                              className="h-full bg-amber-400"
+                            />
+                          </div>
+                        </div>
                       )}
                     </div>
 

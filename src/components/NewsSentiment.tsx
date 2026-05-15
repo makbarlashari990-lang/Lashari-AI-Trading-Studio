@@ -231,7 +231,7 @@ export const NewsSentiment: React.FC<NewsSentimentProps> = ({ activeSymbol }) =>
                <div className="flex flex-wrap gap-2">
                  {['All', ...SOURCES.slice(0, 4)].map(source => (
                    <button
-                     key={source}
+                     key={`ns-src-${source}`}
                      onClick={() => setFilterSource(source)}
                      className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${
                        filterSource === source 
@@ -250,7 +250,7 @@ export const NewsSentiment: React.FC<NewsSentimentProps> = ({ activeSymbol }) =>
                <div className="flex flex-wrap gap-2">
                  {['All', ...TOPICS].map(topic => (
                    <button
-                     key={topic}
+                     key={`ns-top-${topic}`}
                      onClick={() => setFilterTopic(topic)}
                      className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${
                        filterTopic === topic 
@@ -269,7 +269,7 @@ export const NewsSentiment: React.FC<NewsSentimentProps> = ({ activeSymbol }) =>
                <div className="flex flex-wrap gap-2">
                  {['All', ...MARKET_CAPS].map(cap => (
                    <button
-                     key={cap}
+                     key={`ns-cap-${cap}`}
                      onClick={() => setFilterMarketCap(cap)}
                      className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${
                        filterMarketCap === cap 

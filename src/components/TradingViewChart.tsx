@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AdvancedRealTimeChart } from 'react-ts-tradingview-widgets';
-import { Code2, Copy, Check, Info, ExternalLink, X, Zap, PenLine, MousePointer2, Trash2, Palette, Shield, AlertCircle } from 'lucide-react';
+import { Code2, Copy, Check, Info, ExternalLink, X, Zap, PenLine, MousePointer2, Trash2, Palette, Shield, AlertCircle, TrendingUp, Activity, BrainCircuit } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Signal } from '../types';
 
@@ -19,6 +19,9 @@ interface TradingViewChartProps {
   pktTime?: string;
   activeSignal?: Signal;
   isAnalyzing?: boolean;
+  highVolHighlight?: boolean;
+  highVolColor?: string;
+  isSocketConnected?: boolean;
 }
 
 export const TradingViewChart: React.FC<TradingViewChartProps> = ({ 
@@ -28,7 +31,10 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
   onIntervalChange,
   pktTime,
   activeSignal,
-  isAnalyzing
+  isAnalyzing,
+  highVolHighlight = true,
+  highVolColor = '#eab308',
+  isSocketConnected = false
 }) => {
   const [showIndicatorModal, setShowIndicatorModal] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -320,6 +326,28 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
               Lashari AI Indicator
            </button>
 
+           <button 
+             onClick={() => onSymbolChange(symbol)}
+             disabled={isAnalyzing}
+             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+               isAnalyzing 
+                 ? 'bg-emerald-500/20 text-emerald-500 cursor-wait border border-emerald-500/30' 
+                 : 'bg-emerald-500 text-black hover:bg-emerald-400 shadow-lg shadow-emerald-500/20'
+             }`}
+           >
+              {isAnalyzing ? (
+                <>
+                  <Activity size={12} className="animate-spin" />
+                  Neural Scan...
+                </>
+              ) : (
+                <>
+                  <BrainCircuit size={12} />
+                  Analyze Market
+                </>
+              )}
+           </button>
+
            <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900/50 border border-zinc-800 rounded-xl">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <span className="text-[10px] font-black text-zinc-300 uppercase tracking-widest">Active Terminal</span>
@@ -435,15 +463,26 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
                     </div>
                   )}
 
-                  <div className="pt-3 border-t border-zinc-800/50 grid grid-cols-2 gap-2">
+                  <div className="pt-3 border-t border-zinc-800/50 grid grid-cols-3 gap-2">
+                    <div className="p-2 rounded-xl bg-zinc-900/50 border border-zinc-800/50">
+                       <div className="text-[7px] font-black text-zinc-600 uppercase mb-0.5 tracking-tighter">Live Price</div>
+                       <motion.div 
+                         key={activeSignal.currentPrice}
+                         initial={{ opacity: 0.5 }}
+                         animate={{ opacity: 1 }}
+                         className="text-[10px] font-mono font-black text-white"
+                       >
+                         {activeSignal.currentPrice || activeSignal.entry}
+                       </motion.div>
+                    </div>
                     <div className="p-2 rounded-xl bg-zinc-900/50 border border-zinc-800/50">
                        <div className="text-[7px] font-black text-zinc-600 uppercase mb-0.5 tracking-tighter">Confidence</div>
-                       <div className="text-xs font-black text-emerald-400">{activeSignal.confidence}%</div>
+                       <div className="text-[10px] font-black text-emerald-400">{activeSignal.confidence}%</div>
                     </div>
                     <div className="p-2 rounded-xl bg-zinc-900/50 border border-zinc-800/50">
                        <div className="text-[7px] font-black text-zinc-600 uppercase mb-0.5 tracking-tighter">Bias</div>
-                       <div className={`text-xs font-black uppercase ${activeSignal.bias === 'bullish' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {activeSignal.bias}
+                       <div className={`text-[10px] font-black uppercase ${activeSignal.bias === 'bullish' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {activeSignal.bias === 'bullish' ? 'UP' : 'DOWN'}
                        </div>
                     </div>
                   </div>
@@ -485,6 +524,68 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
               />
             )}
           </svg>
+
+          {/* High Volume Visualization Overlay */}
+          <AnimatePresence>
+            {highVolHighlight && (
+              <motion.div 
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                className="absolute top-24 right-6 z-30"
+              >
+                <div 
+                  className="p-4 rounded-2xl bg-black/80 backdrop-blur-xl border border-zinc-800 shadow-2xl flex flex-col gap-3 min-w-[200px]"
+                  style={{ borderLeft: `4px solid ${highVolColor}` }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800">
+                        <Activity size={14} className="text-zinc-400" />
+                      </div>
+                      <span className="text-[10px] font-black text-zinc-300 uppercase tracking-widest leading-none">Volume Analysis</span>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <div className="flex items-center gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-[8px] font-black text-emerald-500 uppercase">Live</span>
+                      </div>
+                      {isSocketConnected && (
+                        <div className="flex items-center gap-1">
+                           <div className="w-1 h-1 rounded-full bg-blue-500 shadow-[0_0_5px_#3b82f6]" />
+                           <span className="text-[6px] font-black text-blue-400 uppercase tracking-tighter">WS STABLE</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-tighter">Intensity</span>
+                      <span className="text-[9px] font-black uppercase" style={{ color: highVolColor }}>High Expansion</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-zinc-900 rounded-full overflow-hidden border border-zinc-800">
+                      <motion.div 
+                        initial={{ width: "30%" }}
+                        animate={{ width: ["60%", "95%", "80%"] }}
+                        transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
+                        className="h-full"
+                        style={{ backgroundColor: highVolColor, boxShadow: `0 0 10px ${highVolColor}40` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 py-1 px-2 rounded-xl bg-zinc-900/50 border border-zinc-800/50">
+                    <TrendingUp size={12} style={{ color: highVolColor }} />
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-black text-white italic leading-none mb-0.5">ABOVE AVERAGE</span>
+                      <span className="text-[7px] font-bold text-zinc-500 uppercase tracking-widest">Detecting Institutional Activity</span>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <AdvancedRealTimeChart
           key={`${symbol}-${interval}`} 

@@ -12,7 +12,6 @@ export interface Signal {
   tp2?: string;
   tp3?: string;
   stop?: string;
-  currentPrice?: string;
   confidence: number;
   pattern: string;
   sentiment?: number; // 0-100
@@ -23,6 +22,8 @@ export interface Signal {
   reason: string;
   vsaReason?: string;
   verificationProgress: number; // 0-100
+  verificationStep?: string;
+  currentPrice?: number;
   factors: {
     structure: 'weak' | 'confirming' | 'strong';
     waves: 'weak' | 'confirming' | 'strong';
