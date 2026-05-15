@@ -27,6 +27,7 @@ interface Signal {
   isConfirmed: boolean;
   factors: {
     structure: 'weak' | 'confirming' | 'strong';
+    waves: 'weak' | 'confirming' | 'strong';
     cabling: 'weak' | 'confirming' | 'strong';
     levels: 'weak' | 'confirming' | 'strong';
   };
@@ -65,6 +66,7 @@ export const LiveMonitor: React.FC<LiveMonitorProps> = ({
   const [activeCount, setActiveCount] = useState(124);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [signalLimit, setSignalLimit] = useState<number | 'all'>(10);
 
   const calculateRR = (entry: string | undefined, stop: string | undefined, target: string | undefined) => {
     if (!entry || !stop || !target) return '0.00';
@@ -118,15 +120,30 @@ export const LiveMonitor: React.FC<LiveMonitorProps> = ({
               <Zap className="w-5 h-5 text-emerald-400" />
               <h3 className="text-lg font-black text-white tracking-tight italic uppercase">Live Intelligence Feed</h3>
            </div>
-           <div className="px-3 py-1 bg-emerald-500/10 rounded-full text-[10px] font-bold text-emerald-400 flex items-center gap-2 border border-emerald-500/20">
-              <BarChart3 className="w-3 h-3" />
-              Linked Terminal
+           <div className="flex items-center gap-4">
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-zinc-800/30 border border-zinc-800/50 rounded-full">
+                <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Limit:</span>
+                <select 
+                  value={signalLimit} 
+                  onChange={(e) => setSignalLimit(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                  className="bg-transparent text-[9px] font-black text-zinc-300 uppercase tracking-widest outline-none cursor-pointer border-none p-0 h-auto ring-0 focus:ring-0"
+                >
+                  <option value={10} className="bg-zinc-900">10</option>
+                  <option value={25} className="bg-zinc-900">25</option>
+                  <option value={50} className="bg-zinc-900">50</option>
+                  <option value="all" className="bg-zinc-900">ALL</option>
+                </select>
+              </div>
+              <div className="px-3 py-1 bg-emerald-500/10 rounded-full text-[10px] font-bold text-emerald-400 flex items-center gap-2 border border-emerald-500/20">
+                 <BarChart3 className="w-3 h-3" />
+                 Linked Terminal
+              </div>
            </div>
         </div>
 
         <div className="space-y-3">
           <AnimatePresence mode="popLayout">
-            {signals.map((signal) => (
+            {(signalLimit === 'all' ? signals : signals.slice(0, signalLimit)).map((signal) => (
               <motion.div
                 key={signal.id}
                 layout
@@ -343,11 +360,11 @@ export const LiveMonitor: React.FC<LiveMonitorProps> = ({
 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
                         {[
-                          { label: 'Take Profit 1', val: signal.tp1, color: 'text-indigo-400', bg: 'bg-indigo-500/10' },
-                          { label: 'Take Profit 2', val: signal.tp2, color: 'text-blue-400', bg: 'bg-blue-500/10' },
-                          { label: 'Take Profit 3', val: signal.tp3, color: 'text-emerald-400', bg: 'bg-emerald-500/10' }
+                          { id: 'tp1', label: 'Take Profit 1', val: signal.tp1, color: 'text-indigo-400', bg: 'bg-indigo-500/10' },
+                          { id: 'tp2', label: 'Take Profit 2', val: signal.tp2, color: 'text-blue-400', bg: 'bg-blue-500/10' },
+                          { id: 'tp3', label: 'Take Profit 3', val: signal.tp3, color: 'text-emerald-400', bg: 'bg-emerald-500/10' }
                         ].map((tp) => (
-                          <div key={tp.label} className={`p-3 rounded-2xl border border-zinc-800/50 ${tp.bg} flex flex-col gap-2 relative overflow-hidden group`}>
+                          <div key={`${signal.id}-${tp.id}`} className={`p-3 rounded-2xl border border-zinc-800/50 ${tp.bg} flex flex-col gap-2 relative overflow-hidden group`}>
                             <div className="flex items-center justify-between">
                               <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">{tp.label}</span>
                               <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-black/40 border border-white/5">
@@ -416,11 +433,12 @@ export const LiveMonitor: React.FC<LiveMonitorProps> = ({
                           <div className="grid grid-cols-1 gap-2 text-[10px] font-bold uppercase tracking-tight">
                             {[
                               { id: 'structure', label: 'Market Structure', val: signal.factors.structure, desc: 'HH/HL & BOS Alignment' },
+                              { id: 'waves', label: 'Move 1-5 Pattern', val: signal.factors.waves, desc: 'Phase 5 Exhaustion' },
                               { id: 'cabling', label: 'Dynamic Cabling', val: signal.factors.cabling, desc: 'Liquidity & Order Flow' },
                               { id: 'levels', label: 'Fixture Levels', val: signal.factors.levels, desc: 'S/R & Supply/Demand' }
                             ].map((f) => (
                               <div 
-                                key={f.id}
+                                key={`${signal.id}-${f.id}`}
                                 className={`flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all duration-500 ${
                                   f.val === 'strong' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' :
                                   f.val === 'confirming' ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :

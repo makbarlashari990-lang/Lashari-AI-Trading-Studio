@@ -475,8 +475,8 @@ export const NewsSentiment: React.FC<NewsSentimentProps> = ({ activeSymbol }) =>
                          <div>
                             <span className="text-[8px] font-black text-zinc-500 tracking-[0.2em] uppercase block mb-2">Identified Key Topics</span>
                             <div className="flex flex-wrap gap-2">
-                               {item.keyTopics.map(tag => (
-                                 <span key={tag} className="px-2 py-0.5 rounded-full bg-zinc-800 border border-zinc-700 text-[9px] font-bold text-zinc-400">
+                               {item.keyTopics.map((tag, i) => (
+                                 <span key={`${item.id}-tag-${tag}-${i}`} className="px-2 py-0.5 rounded-full bg-zinc-800 border border-zinc-700 text-[9px] font-bold text-zinc-400">
                                    #{tag.toLowerCase()}
                                  </span>
                                ))}

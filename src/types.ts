@@ -25,6 +25,7 @@ export interface Signal {
   verificationProgress: number; // 0-100
   factors: {
     structure: 'weak' | 'confirming' | 'strong';
+    waves: 'weak' | 'confirming' | 'strong';
     cabling: 'weak' | 'confirming' | 'strong';
     levels: 'weak' | 'confirming' | 'strong';
   };

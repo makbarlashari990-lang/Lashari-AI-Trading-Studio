@@ -367,11 +367,13 @@ export default function App() {
         const newProgress = Math.min(100, s.verificationProgress + Math.floor(Math.random() * 15) + 5);
         const factors = { ...s.factors };
         
-        if (newProgress > 30) factors.structure = 'confirming';
-        if (newProgress > 60) factors.cabling = 'confirming';
-        if (newProgress > 80) factors.levels = 'strong';
-        if (newProgress > 90) {
+        if (newProgress > 25) factors.structure = 'confirming';
+        if (newProgress > 45) factors.waves = 'confirming';
+        if (newProgress > 65) factors.cabling = 'confirming';
+        if (newProgress > 85) factors.levels = 'strong';
+        if (newProgress > 95) {
           factors.structure = 'strong';
+          factors.waves = 'strong';
           factors.cabling = 'strong';
         }
 
@@ -384,7 +386,7 @@ export default function App() {
           isConfirmed: isFullyConfirmed,
           status: isFullyConfirmed ? 'active' : 'pending',
           executionLabel: isFullyConfirmed ? 'Entry is Active' : `Verifying ${newProgress}%`,
-          confirmationReason: isFullyConfirmed ? 'Structure, Cabling & Levels Fully Aligned' : s.confirmationReason
+          confirmationReason: isFullyConfirmed ? 'Move 4->5 Exhaustion + RSI Div Confirmed' : s.confirmationReason
         };
       }));
     }, 4000);
@@ -426,10 +428,10 @@ export default function App() {
         executionLabel: 'Executed Entry',
         isConfirmed: true,
         verificationProgress: 100,
-        confirmationReason: 'Structure + Levels + Cabling alignment confirmed on M15',
-        reason: 'Ultra-high volume detected at the bottom of the range. Effort vs Result divergence confirms institutional accumulation.',
-        vsaReason: 'Stopping Volume + Bag Holding signature detected on M15.',
-        factors: { structure: 'strong', cabling: 'strong', levels: 'strong' }
+        confirmationReason: 'Wave 5 + RSI Div Exhaustion',
+        reason: 'Move 5 completed with clear RSI divergence. Institutional capping confirmed at current value levels.',
+        vsaReason: 'Stopping Volume + Bag Holding signature detected on Wave 5.',
+        factors: { structure: 'strong', waves: 'strong', cabling: 'strong', levels: 'strong' }
       },
       { 
         id: '2', asset: 'XAU/USD', symbol: 'OANDA:XAUUSD', type: 'OB', bias: 'bearish', 
@@ -440,8 +442,8 @@ export default function App() {
         executionLabel: 'Signal Received Now',
         isConfirmed: false,
         verificationProgress: 45,
-        reason: 'Price is approaching a major supply zone. Waiting for Structure and Cabling alignment on lower timeframes.',
-        factors: { structure: 'confirming', cabling: 'weak', levels: 'strong' }
+        reason: 'Move 4 complete. Waiting for Move 5 thrust into supply zone with RSI divergence confirmation.',
+        factors: { structure: 'confirming', waves: 'confirming', cabling: 'weak', levels: 'strong' }
       },
       { 
         id: '3', asset: 'EUR/USD', symbol: 'FX:EURUSD', type: 'LIQUIDITY', bias: 'bullish', 
@@ -452,10 +454,10 @@ export default function App() {
         executionLabel: 'Entry is Active',
         isConfirmed: true,
         verificationProgress: 100,
-        confirmationReason: 'Golden Confluence: Structure + Levels + Cabling',
-        reason: 'VSA Shakeout confirmed with low volume retest. Institutional demand is overwhelming the supply at this level.',
-        vsaReason: 'No Supply Test confirmed after Spring signature.',
-        factors: { structure: 'strong', cabling: 'strong', levels: 'strong' }
+        confirmationReason: 'Move 1-5 Cycle Complete + RSI Div',
+        reason: 'Institutional accumulation completed during the Wave 5 sweep of Asian lows.',
+        vsaReason: 'No Supply Test confirmed after Move 5 exhaustion.',
+        factors: { structure: 'strong', waves: 'strong', cabling: 'strong', levels: 'strong' }
       },
     ];
     setSignals(initialSignals);
@@ -478,11 +480,11 @@ export default function App() {
       const types: ('BOS' | 'OB' | 'FVG' | 'LIQUIDITY' | 'TREND' | 'VSA')[] = ['BOS', 'OB', 'FVG', 'LIQUIDITY', 'TREND', 'VSA'];
       const timeframes = ['1m', '5m', '15m', '1h', '4h'];
       const reasons = [
-        'Institutional order flow alignment with high volume confirmation.',
-        'Imbalance fill detected within a high-probability supply/demand zone.',
-        'Market structure shift detected after sweeping key liquidity levels.',
-        'Fibonacci golden pocket confluence with strong RSI divergence.',
-        'Powerful convergence of structure, volume, and institutional zones.'
+        'Institutional Convergence (W5+Div+Fib+OB)',
+        'Order Block Refill + RSI Div',
+        'Momentum Structure Breakout',
+        'FVG Entry + Trend Confirmation',
+        'CHOCH Reversal + Multi-Factor Sync'
       ];
       const vsaReasons = [
         "Buying Climax / No Demand",
@@ -519,6 +521,7 @@ export default function App() {
         ...getLevels(newAsset, newBias),
         factors: {
           structure: 'weak',
+          waves: 'weak',
           cabling: 'weak',
           levels: 'confirming'
         }
@@ -1138,15 +1141,33 @@ if show_ob and array.size(ob_boxes) > 0
                     array.remove(ob_labels, i)
                 array.remove(ob_boxes, i)
 
-// Fair Value Gaps (FVG)
+// Fair Value Gaps (FVG) with Mitigation Detection
 is_fvg_bull = low[0] > high[2]
 is_fvg_bear = high[0] < low[2]
 
+var box[] fvg_boxes = array.new_box()
+
 if show_fvg
     if is_fvg_bull
-        box.new(bar_index[2], high[2], bar_index, low[0], bgcolor=color.new(bullish_ob_color, 85), border_color=na)
+        box b = box.new(bar_index[2], high[2], bar_index, low[0], bgcolor=color.new(bullish_ob_color, 85), border_color=na, extend=extend.right)
+        array.push(fvg_boxes, b)
     if is_fvg_bear
-        box.new(bar_index[2], low[2], bar_index, high[0], bgcolor=color.new(bearish_ob_color, 85), border_color=na)
+        box b = box.new(bar_index[2], low[2], bar_index, high[0], bgcolor=color.new(bearish_ob_color, 85), border_color=na, extend=extend.right)
+        array.push(fvg_boxes, b)
+
+// FVG Mitigation Detection
+is_in_fvg_bull = false
+is_in_fvg_bear = false
+if array.size(fvg_boxes) > 0
+    for i = 0 to array.size(fvg_boxes) - 1
+        box b = array.get(fvg_boxes, i)
+        float b_top = box.get_top(b)
+        float b_btm = box.get_bottom(b)
+        if low <= b_top and high >= b_btm
+            if b_top > b_btm
+                is_in_fvg_bull := true
+            else
+                is_in_fvg_bear := true
 
 // ==========================================
 // PRICE ACTION - ANTI-FAKE BREAKOUT
@@ -1194,35 +1215,75 @@ is_powerful_sell = (bear_reg_div or bear_hid_div) and is_at_fib_50_sell and (bea
 // --- ENTRY LOGIC REASON DETERMINATION ---
 string entry_method_buy = ""
 if buy_signal
+    bool has_div = bull_reg_div or bull_hid_div
+    bool has_fib = is_at_fib_50_buy
+    bool has_ob = is_in_ob_bull
+    bool has_fvg = is_in_fvg_bull
+    bool is_wave5 = bullish_wave == 5
+    
     if is_powerful_buy
-        entry_method_buy := "Powerful Convergence"
-    else if bull_reg_div or bull_hid_div
-        entry_method_buy := "RSI Divergence"
-    else if is_at_fib_50_buy
-        entry_method_buy := "Fib 50% Level"
-    else if is_in_ob_bull
-        entry_method_buy := "Order Block Ref"
+        entry_method_buy := "Institutional Convergence (W5+Div+Fib+OB)"
+    else if is_wave5 and has_div
+        entry_method_buy := "Wave 5 + RSI Div Exhaustion"
+    else if has_ob and has_div
+        entry_method_buy := "Order Block Refill + RSI Div"
+    else if has_ob and has_fib
+        entry_method_buy := "OB Refill + Fib Confluence"
+    else if has_fvg and has_div
+        entry_method_buy := "FVG Entry + RSI Divergence"
+    else if is_wave5 and has_ob
+        entry_method_buy := "Wave 5 Order Block Entry"
+    else if is_wave5
+        entry_method_buy := "Wave 5 Phase Exhaustion"
+    else if has_div
+        entry_method_buy := "RSI Divergence Setup"
+    else if has_ob
+        entry_method_buy := "Order Block Refill"
+    else if has_fvg
+        entry_method_buy := "FVG Mitigation Entry"
+    else if has_fib
+        entry_method_buy := "Fibonacci 50% Level"
     else if is_strong_breakout_bull
-        entry_method_buy := "Structure Breakout"
+        entry_method_buy := "Momentum Structure Break"
     else if is_choch_bullish
-        entry_method_buy := "CHOCH Reversal"
+        entry_method_buy := "CHOCH Reversal Pattern"
     else
         entry_method_buy := "Trend Confirmation"
 
 string entry_method_sell = ""
 if sell_signal
+    bool has_div = bear_reg_div or bear_hid_div
+    bool has_fib = is_at_fib_50_sell
+    bool has_ob = is_in_ob_bear
+    bool has_fvg = is_in_fvg_bear
+    bool is_wave5 = bearish_wave == 5
+    
     if is_powerful_sell
-        entry_method_sell := "Powerful Convergence"
-    else if bear_reg_div or bear_hid_div
-        entry_method_sell := "RSI Divergence"
-    else if is_at_fib_50_sell
-        entry_method_sell := "Fib 50% Level"
-    else if is_in_ob_bear
-        entry_method_sell := "Order Block Ref"
+        entry_method_sell := "Institutional Convergence (W5+Div+Fib+OB)"
+    else if is_wave5 and has_div
+        entry_method_sell := "Wave 5 + RSI Div Exhaustion"
+    else if has_ob and has_div
+        entry_method_sell := "Order Block Refill + RSI Div"
+    else if has_ob and has_fib
+        entry_method_sell := "OB Refill + Fib Confluence"
+    else if has_fvg and has_div
+        entry_method_sell := "FVG Entry + RSI Divergence"
+    else if is_wave5 and has_ob
+        entry_method_sell := "Wave 5 Order Block Entry"
+    else if is_wave5
+        entry_method_sell := "Wave 5 Phase Exhaustion"
+    else if has_div
+        entry_method_sell := "RSI Divergence Setup"
+    else if has_ob
+        entry_method_sell := "Order Block Refill"
+    else if has_fvg
+        entry_method_sell := "FVG Mitigation Entry"
+    else if has_fib
+        entry_method_sell := "Fibonacci 50% Level"
     else if is_strong_breakout_bear
-        entry_method_sell := "Structure Breakout"
+        entry_method_sell := "Momentum Structure Break"
     else if is_choch_bearish
-        entry_method_sell := "CHOCH Reversal"
+        entry_method_sell := "CHOCH Reversal Pattern"
     else
         entry_method_sell := "Trend Confirmation"
 
@@ -1880,7 +1941,7 @@ alertcondition(alert_rsi_div and bear_hid_div, "RSI: Bearish Hidden Divergence",
                        { label: 'Institutional OB', active: simulation.factors.ob, color: bullishObColor }
                      ].map((f, i) => (
                        <div 
-                         key={i}
+                         key={`logic-clearance-step-${i}`}
                          className="p-4 rounded-3xl border flex flex-col items-center justify-center gap-3 transition-all duration-500"
                          style={{ 
                            backgroundColor: f.active ? `${f.color}1a` : 'rgba(39, 39, 42, 0.1)',
@@ -1909,11 +1970,11 @@ alertcondition(alert_rsi_div and bear_hid_div, "RSI: Bearish Hidden Divergence",
                 <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-6">Market Session Gate</h4>
                 <div className="space-y-4">
                   {[
-                    { label: 'Asian Session', active: useAsian, color: 'text-blue-400', bg: 'bg-blue-500/10' },
-                    { label: 'London Session', active: useLondon, color: 'text-orange-400', bg: 'bg-orange-500/10' },
-                    { label: 'NY Session', active: useNys, color: 'text-purple-400', bg: 'bg-purple-500/10' },
-                  ].map((s, i) => (
-                    <div key={i} className="flex items-center justify-between p-3 rounded-2xl bg-zinc-900/50 border border-zinc-800/50">
+                    { id: 'asian', label: 'Asian Session', active: useAsian, color: 'text-blue-400', bg: 'bg-blue-500/10' },
+                    { id: 'london', label: 'London Session', active: useLondon, color: 'text-orange-400', bg: 'bg-orange-500/10' },
+                    { id: 'ny', label: 'NY Session', active: useNys, color: 'text-purple-400', bg: 'bg-purple-500/10' },
+                  ].map((s) => (
+                    <div key={`sess-${s.id}`} className="flex items-center justify-between p-3 rounded-2xl bg-zinc-900/50 border border-zinc-800/50">
                       <div className="flex items-center gap-3">
                          <div className={`w-2 h-2 rounded-full ${s.active ? s.color.replace('text', 'bg') : 'bg-zinc-800'}`} />
                          <span className={`text-[11px] font-bold ${s.active ? 'text-zinc-200' : 'text-zinc-600'}`}>{s.label}</span>
@@ -2855,7 +2916,7 @@ alertcondition(alert_rsi_div and bear_hid_div, "RSI: Bearish Hidden Divergence",
                    </div>
                    <div className="bg-zinc-950/50 p-4 rounded-2xl border border-zinc-800/50 font-mono text-[10px] space-y-1.5 max-h-[150px] overflow-y-auto no-scrollbar">
                       {terminalLogs.map((log, i) => (
-                        <div key={`term-${i}`} className="flex gap-3">
+                        <div key={`term-feed-row-${i}-${log.substring(0, 10)}`} className="flex gap-3">
                            <span className="text-zinc-700 shrink-0">{i+1}</span>
                            <span className={log.includes('SUCCESS') || log.includes('OK') ? 'text-emerald-400' : 'text-zinc-400'}>{log}</span>
                         </div>
@@ -3009,7 +3070,7 @@ alertcondition(alert_rsi_div and bear_hid_div, "RSI: Bearish Hidden Divergence",
                 </pre>
                 <div className="mt-4 p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/20 text-emerald-400/80 font-mono text-[10px] space-y-1">
                    {terminalLogs.map((log, i) => (
-                     <div key={`log-${i}-${log.substring(0, 10)}`}>{log}</div>
+                     <div key={`log-output-${i}-${log.substring(0, 15)}`}>{log}</div>
                    ))}
                    <div className="animate-pulse">_</div>
                 </div>
