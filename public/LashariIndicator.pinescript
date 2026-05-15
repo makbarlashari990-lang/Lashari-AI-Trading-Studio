@@ -1,0 +1,865 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © m_akbarlashari990
+
+//@version=5
+indicator("Lashari Smart Money AI Indicator", overlay=true, max_boxes_count=500, max_labels_count=500, max_lines_count=500, max_bars_back=1000)
+
+// ==========================================
+// INPUTS
+// ==========================================
+grp_ema = "EMA Trend System"
+ema_fast_len = input.int(20, "EMA Fast (Trend)", group=grp_ema)
+ema_med_len  = input.int(50, "EMA Medium (Confirmation)", group=grp_ema)
+ema_slow_len = input.int(200, "EMA Slow (Major)", group=grp_ema)
+show_ema_zones = input.bool(true, "Show Trend Zones", group=grp_ema)
+
+grp_smc = "Smart Money Concepts (SMC)"
+show_bos = input.bool(true, "Show BOS / CHOCH", group=grp_smc)
+show_ob  = input.bool(true, "Show Order Blocks", group=grp_smc)
+ob_lookback = input.int(50, "OB Lookback Period", group=grp_smc)
+ob_min_body = input.float(60.0, "OB Min Body %", minval=0, maxval=100, group=grp_smc)
+show_fvg = input.bool(true, "Show Fair Value Gaps", group=grp_smc)
+smc_lookback = input.int(10, "SMC Lookback Period", group=grp_smc)
+
+grp_osc = "Oscillators (RSI & MACD)"
+rsi_len = input.int(14, "RSI Length", group=grp_osc)
+rsi_ob  = input.int(70, "RSI Overbought", group=grp_osc)
+rsi_os  = input.int(30, "RSI Oversold", group=grp_osc)
+macd_f  = input.int(12, "MACD Fast", group=grp_osc)
+macd_s  = input.int(26, "MACD Slow", group=grp_osc)
+macd_sig = input.int(9, "MACD Signal", group=grp_osc)
+
+grp_mtf = "Multi-Timeframe Engine"
+use_mtf = input.bool(true, "Use HTF Trend Confirmation", group=grp_mtf)
+htf_val = input.timeframe("D", "HTF Reference", group=grp_mtf)
+
+grp_risk = "Risk Management"
+atr_len = input.int(14, "ATR Length", group=grp_risk)
+atr_mult = input.float(1.5, "ATR SL Multiplier", group=grp_risk)
+tp1_rr = input.float(1.5, "Take Profit 1 (RR)", group=grp_risk)
+tp2_rr = input.float(2.0, "Take Profit 2 (RR)", group=grp_risk)
+tp3_rr = input.float(3.0, "Take Profit 3 (RR)", group=grp_risk)
+show_tp_lines = input.bool(true, "Display TP/SL Levels on Chart", group=grp_risk)
+
+grp_session = "Trading Sessions Filter"
+use_session_filter = input.bool(true, "Only Trade During Active Sessions", group=grp_session)
+show_session_color = input.bool(true, "Show Session Backgrounds", group=grp_session)
+use_asian = input.bool(true, "Asian Session Active", group=grp_session)
+asian_sess_input = input.session("0000-0800", "Asian Session (UTC)", group=grp_session)
+use_london = input.bool(true, "London Session Active", group=grp_session)
+london_sess_input = input.session("0800-1600", "London Session (UTC)", group=grp_session)
+use_nys = input.bool(true, "NY Session Active", group=grp_session)
+nys_sess_input = input.session("1300-2100", "New York Session (UTC)", group=grp_session)
+
+grp_extra = "Price Action Filters"
+use_anti_fake = input.bool(true, "Use Anti-Fake Breakout Filter", group=grp_extra)
+show_high_vol_color = input.bool(true, "Highlight High Volume Bars (Yellow)", group=grp_extra)
+min_body_perc = input.float(50.0, "Min Body Percentage to Range", minval=0, maxval=100, group=grp_extra)
+min_fbo_wick  = input.float(30.0, "Min FBO Wick %", minval=0, maxval=100, group=grp_extra)
+show_fbo = input.bool(true, "Show Fake Breakouts (FBO)", group=grp_extra)
+
+grp_display = "Display & Visuals"
+show_entry_reason = input.bool(true, "Show Entry Logic Reason", group=grp_display)
+show_active_marker = input.bool(true, "Mark Active Market Entry", group=grp_display)
+
+grp_alerts = "Advanced Alert System"
+alert_signals = input.bool(true, "Alert on Buy/Sell Signals", group=grp_alerts)
+alert_bos = input.bool(true, "Alert on BOS / CHOCH", group=grp_alerts)
+alert_ob  = input.bool(true, "Alert on New Order Blocks", group=grp_alerts)
+alert_fvg = input.bool(true, "Alert on FVG Detection", group=grp_alerts)
+alert_fbo = input.bool(true, "Alert on Fake Breakouts", group=grp_alerts)
+alert_rsi_div = input.bool(true, "Alert on RSI Divergence", group=grp_alerts)
+alert_session = input.bool(true, "Alert on Session Starts", group=grp_alerts)
+
+grp_backtest = "Backtest Engine"
+show_backtest = input.bool(true, "Show Backtest Metrics", group=grp_backtest)
+init_balance = input.float(10000.0, "Initial Balance ($)", group=grp_backtest)
+risk_per_trade = input.float(1.0, "Risk Per Trade (%)", group=grp_backtest)
+
+// ==========================================
+// CALCULATIONS - SESSIONS
+// ==========================================
+is_asian = not na(time(timeframe.period, asian_sess_input, "UTC"))
+is_london = not na(time(timeframe.period, london_sess_input, "UTC"))
+is_nys = not na(time(timeframe.period, nys_sess_input, "UTC"))
+is_in_session = (use_asian and is_asian) or (use_london and is_london) or (use_nys and is_nys)
+
+bgcolor(show_session_color and is_asian ? color.new(color.blue, 95) : na, title="Asian Session BG")
+bgcolor(show_session_color and is_london ? color.new(color.orange, 95) : na, title="London Session BG")
+bgcolor(show_session_color and is_nys ? color.new(color.purple, 95) : na, title="NY Session BG")
+
+is_asian_start = is_asian and not is_asian[1]
+is_london_start = is_london and not is_london[1]
+is_nys_start = is_nys and not is_nys[1]
+
+// ==========================================
+// CALCULATIONS - HTF TREND
+// ==========================================
+// Fetching HTF data non-repainting way
+[htf_ema, htf_close, htf_high, htf_low] = request.security(syminfo.tickerid, htf_val, [ta.ema(close, 200), close, high, low], lookahead=barmerge.lookahead_off)
+htf_bullish = htf_close > htf_ema
+htf_trend_strength = htf_bullish ? (htf_close > htf_high[1] ? "Strong Bullish" : "Bullish Bias") : (htf_close < htf_low[1] ? "Strong Bearish" : "Bearish Bias")
+
+// ==========================================
+// CALCULATIONS - RISK & VOLATILITY
+// ==========================================
+atr = ta.atr(atr_len)
+
+// ==========================================
+// VOLUME ANALYSIS
+// ==========================================
+vol_avg = ta.sma(volume, 20)
+is_high_vol = volume > vol_avg * 1.5
+vol_expanding = volume > volume[1]
+
+// ==========================================
+// CALCULATIONS - EMA SYSTEM
+// ==========================================
+ema_fast = ta.ema(close, ema_fast_len)
+ema_med  = ta.ema(close, ema_med_len)
+ema_slow = ta.ema(close, ema_slow_len)
+
+is_bullish_trend = ema_fast > ema_med and ema_med > ema_slow
+is_bearish_trend = ema_fast < ema_med and ema_med < ema_slow
+
+// --- Smooth Trend Background Transition ---
+var float trend_bias = 0.0
+target_bias = is_bullish_trend ? 1.0 : is_bearish_trend ? -1.0 : 0.0
+// Smooth the bias over 5 bars for a subtle transition
+trend_bias := ta.ema(target_bias, 5)
+
+// Define color gradient based on smoothed bias
+// -1 (Strong Bearish) -> 0 (Neutral) -> 1 (Strong Bullish)
+trend_bg_color = trend_bias > 0 ? color.from_gradient(trend_bias, 0, 1, color.new(color.white, 100), color.new(color.green, 92)) : color.from_gradient(trend_bias, -1, 0, color.new(color.red, 92), color.new(color.white, 100))
+
+plot(ema_fast, color=color.new(color.blue, 30), linewidth=1, title="EMA Fast")
+plot(ema_med,  color=color.new(color.yellow, 30), linewidth=2, title="EMA Medium")
+plot(ema_slow, color=color.new(color.white, 30), linewidth=3, title="EMA Slow")
+
+// Bar Coloring
+bar_color = is_high_vol and show_high_vol_color ? color.new(color.yellow, 0) : is_bullish_trend ? color.new(color.green, 50) : is_bearish_trend ? color.new(color.red, 50) : na
+barcolor(bar_color)
+
+bgcolor(show_ema_zones ? trend_bg_color : na)
+
+// ==========================================
+// CALCULATIONS - RSI & MACD
+// ==========================================
+rsi = ta.rsi(close, rsi_len)
+[macd_line, macd_signal, macd_hist] = ta.macd(close, macd_f, macd_s, macd_sig)
+
+rsi_bullish = ta.crossover(rsi, rsi_os)
+rsi_bearish = ta.crossunder(rsi, rsi_ob)
+
+macd_bullish = ta.crossover(macd_line, macd_signal)
+macd_bearish = ta.crossunder(macd_line, macd_signal)
+
+// ==========================================
+// CALCULATIONS - RSI DIVERGENCE (Regular & Hidden)
+// ==========================================
+// Check for Divergence
+lookback_divergence = 60
+rsi_ph = ta.pivothigh(rsi, 5, 5)
+rsi_pl = ta.pivotlow(rsi, 5, 5)
+
+// Bullish Regular Divergence (Price Lower Low, RSI Higher Low)
+bull_reg_div = false
+if rsi_pl
+    for i = 1 to lookback_divergence
+        if not na(rsi_pl[i]) and rsi > rsi_pl[i] and low < low[i+5]
+            bull_reg_div := true
+            break
+
+// Bearish Regular Divergence (Price Higher High, RSI Lower High)
+bear_reg_div = false
+if rsi_ph
+    for i = 1 to lookback_divergence
+        if not na(rsi_ph[i]) and rsi < rsi_ph[i] and high > high[i+5]
+            bear_reg_div := true
+            break
+
+// Bullish Hidden Divergence (Price Higher Low, RSI Lower Low)
+bull_hid_div = false
+if rsi_pl
+    for i = 1 to lookback_divergence
+        if not na(rsi_pl[i]) and rsi < rsi_pl[i] and low > low[i+5]
+            bull_hid_div := true
+            break
+
+// Bearish Hidden Divergence (Price Lower High, RSI Higher High)
+bear_hid_div = false
+if rsi_ph
+    for i = 1 to lookback_divergence
+        if not na(rsi_ph[i]) and rsi > rsi_ph[i] and high < high[i+5]
+            bear_hid_div := true
+            break
+
+// ==========================================
+// CALCULATIONS - SMC (BOS/CHOCH/FVG)
+// ==========================================
+hi = ta.highest(high, smc_lookback)
+lo = ta.lowest(low, smc_lookback)
+
+var float last_hi = na
+var float last_lo = na
+
+if ta.change(hi)
+    last_hi := hi[1]
+if ta.change(lo)
+    last_lo := lo[1]
+
+is_bos_bullish = ta.crossover(close, last_hi)
+is_bos_bearish = ta.crossunder(close, last_lo)
+
+// ==========================================
+// CALCULATIONS - FIBONACCI 50% LEVEL
+// ==========================================
+var float fib_50_bull = na
+var float fib_50_bear = na
+
+if is_bos_bullish
+    fib_50_bull := last_lo + (high - last_lo) * 0.5
+if is_bos_bearish
+    fib_50_bear := last_hi - (last_hi - low) * 0.5
+
+is_at_fib_50_buy = not na(fib_50_bull) and low <= fib_50_bull and close > fib_50_bull
+is_at_fib_50_sell = not na(fib_50_bear) and high >= fib_50_bear and close < fib_50_bear
+
+// Simple Change of Character (CHOCH) - first break against trend
+is_choch_bullish = is_bearish_trend and is_bos_bullish
+is_choch_bearish = is_bullish_trend and is_bos_bearish
+
+// 1-2-3-4-5 Wave Pattern Tracking (Pivot-Based Impulse/Retracement)
+var int bullish_wave = 0
+var int bearish_wave = 0
+var float last_p1 = 0.0
+var float last_p2 = 0.0
+var float last_p3 = 0.0
+var float last_p4 = 0.0
+
+// Identify Swing Points
+ph = ta.pivothigh(high, 5, 5)
+pl = ta.pivotlow(low, 5, 5)
+
+// Bullish Wave Logic
+if ph
+    if bullish_wave == 0
+        bullish_wave := 1
+        last_p1 := ph
+    else if bullish_wave == 2 and ph > last_p1
+        bullish_wave := 3
+        last_p3 := ph
+    else if bullish_wave == 4 and ph > last_p3
+        bullish_wave := 5
+    
+    // Reset if structure breaks
+    if ph < last_p1 and bullish_wave >= 3
+        bullish_wave := 0
+
+if pl
+    if bullish_wave == 1 and pl > low[10] // Simple HL check
+        bullish_wave := 2
+        last_p2 := pl
+    else if bullish_wave == 3 and pl > last_p2
+        bullish_wave := 4
+        last_p4 := pl
+
+// Bearish Wave Logic
+if pl
+    if bearish_wave == 0
+        bearish_wave := 1
+        last_p1 := pl
+    else if bearish_wave == 2 and pl < last_p1
+        bearish_wave := 3
+        last_p3 := pl
+    else if bearish_wave == 4 and pl < last_p3
+        bearish_wave := 5
+    
+    if pl > last_p1 and bearish_wave >= 3
+        bearish_wave := 0
+
+if ph
+    if bearish_wave == 1 and ph < high[10] // Simple LH check
+        bearish_wave := 2
+        last_p2 := ph
+    else if bearish_wave == 3 and ph < last_p2
+        bearish_wave := 4
+        last_p4 := ph
+
+// Reset logic
+if is_choch_bullish or is_choch_bearish
+    bullish_wave := 0
+    bearish_wave := 0
+
+string wave_label = bullish_wave > 0 ? "WAVE " + str.tostring(bullish_wave) : bearish_wave > 0 ? "WAVE " + str.tostring(bearish_wave) : ""
+
+if ph and bullish_wave > 0 and show_bos
+    label.new(bar_index[5], high[5], str.tostring(bullish_wave), style=label.style_none, textcolor=color.lime, textalign=text.align_center)
+if pl and bearish_wave > 0 and show_bos
+    label.new(bar_index[5], low[5], str.tostring(bearish_wave), style=label.style_none, textcolor=color.orange, textalign=text.align_center)
+
+if is_bos_bullish and show_bos
+    label.new(bar_index, high, "BOS", style=label.style_label_down, color=color.green, textcolor=color.black, size=size.tiny)
+if is_bos_bearish and show_bos
+    label.new(bar_index, low, "BOS", style=label.style_label_up, color=color.red, textcolor=color.white, size=size.tiny)
+
+// ==========================================
+// SMC ENGINE: ADVANCED ORDER BLOCKS & FVG
+// ==========================================
+
+// Order Blocks (OB) with Advanced Filtering & Mitigation
+var box[] ob_bull_boxes = array.new_box()
+var box[] ob_bear_boxes = array.new_box()
+
+if show_ob
+    // Bullish OB Detection: Last down candle before a displacement upward
+    // Displacement identified by strong close and above average volume
+    if close > high[1] and close[1] > open[1] and volume > vol_avg
+        int ob_idx = -1
+        for i = 1 to ob_lookback
+            if open[i] > close[i] // Down candle
+                float c_range = high[i] - low[i]
+                float c_body = math.abs(close[i] - open[i])
+                float c_body_perc = c_range != 0 ? (c_body / c_range) * 100 : 0
+                if c_body_perc >= ob_min_body
+                    ob_idx := i
+                    break
+        
+        if ob_idx != -1
+            float ob_hi = high[ob_idx]
+            float ob_lo = low[ob_idx]
+            box b = box.new(bar_index[ob_idx], ob_hi, bar_index, ob_lo, bgcolor=color.new(color.emerald, 85), border_color=color.new(color.emerald, 60), extend=extend.right, text="Bullish OB", text_size=size.tiny, text_color=color.new(color.emerald, 40), text_halign=text.align_right)
+            array.push(ob_bull_boxes, b)
+            if array.size(ob_bull_boxes) > 10
+                box.delete(array.shift(ob_bull_boxes))
+
+    // Bearish OB Detection: Last up candle before a displacement downward
+    if close < low[1] and close[1] < open[1] and volume > vol_avg
+        int ob_idx = -1
+        for i = 1 to ob_lookback
+            if open[i] < close[i] // Up candle
+                float c_range = high[i] - low[i]
+                float c_body = math.abs(close[i] - open[i])
+                float c_body_perc = c_range != 0 ? (c_body / c_range) * 100 : 0
+                if c_body_perc >= ob_min_body
+                    ob_idx := i
+                    break
+        
+        if ob_idx != -1
+            float ob_hi = high[ob_idx]
+            float ob_lo = low[ob_idx]
+            box b = box.new(bar_index[ob_idx], ob_hi, bar_index, ob_lo, bgcolor=color.new(color.rose, 85), border_color=color.new(color.rose, 60), extend=extend.right, text="Bearish OB", text_size=size.tiny, text_color=color.new(color.rose, 40), text_halign=text.align_right)
+            array.push(ob_bear_boxes, b)
+            if array.size(ob_bear_boxes) > 10
+                box.delete(array.shift(ob_bear_boxes))
+
+// Order Block Mitigation Logic
+if array.size(ob_bull_boxes) > 0
+    for i = array.size(ob_bull_boxes) - 1 to 0
+        box b = array.get(ob_bull_boxes, i)
+        if close < box.get_bottom(b) // Price broke below OB
+            box.delete(b)
+            array.remove(ob_bull_boxes, i)
+
+if array.size(ob_bear_boxes) > 0
+    for i = array.size(ob_bear_boxes) - 1 to 0
+        box b = array.get(ob_bear_boxes, i)
+        if close > box.get_top(b) // Price broke above OB
+            box.delete(b)
+            array.remove(ob_bear_boxes, i)
+
+// Fair Value Gaps (FVG) with Mitigation
+var box[] fvg_bull_boxes = array.new_box()
+var box[] fvg_bear_boxes = array.new_box()
+
+is_fvg_bull = low[0] > high[2]
+is_fvg_bear = high[0] < low[2]
+
+if show_fvg
+    // Bullish FVG
+    if low[0] > high[2]
+        float gap_top = low[0]
+        float gap_btm = high[2]
+        box b = box.new(bar_index[2], gap_top, bar_index, gap_btm, bgcolor=color.new(color.emerald, 92), border_width=0, extend=extend.right)
+        array.push(fvg_bull_boxes, b)
+        if array.size(fvg_bull_boxes) > 10
+            box.delete(array.shift(fvg_bull_boxes))
+
+    // Bearish FVG
+    if high[0] < low[2]
+        float gap_top = low[2]
+        float gap_btm = high[0]
+        box b = box.new(bar_index[2], gap_top, bar_index, gap_btm, bgcolor=color.new(color.rose, 92), border_width=0, extend=extend.right)
+        array.push(fvg_bear_boxes, b)
+        if array.size(fvg_bear_boxes) > 10
+            box.delete(array.shift(fvg_bear_boxes))
+
+// FVG Mitigation
+if array.size(fvg_bull_boxes) > 0
+    for i = array.size(fvg_bull_boxes) - 1 to 0
+        box b = array.get(fvg_bull_boxes, i)
+        if low <= box.get_bottom(b) // Fully filled
+            box.delete(b)
+            array.remove(fvg_bull_boxes, i)
+        else if low < box.get_top(b) // Partially filled
+            box.set_top(b, low)
+
+if array.size(fvg_bear_boxes) > 0
+    for i = array.size(fvg_bear_boxes) - 1 to 0
+        box b = array.get(fvg_bear_boxes, i)
+        if high >= box.get_top(b) // Fully filled
+            box.delete(b)
+            array.remove(fvg_bear_boxes, i)
+        else if high > box.get_bottom(b) // Partially filled
+            box.set_bottom(b, high)
+
+
+// ==========================================
+// PRICE ACTION - ANTI-FAKE BREAKOUT
+// ==========================================
+candle_range = high - low
+candle_body  = math.abs(close - open)
+body_perc    = candle_range != 0 ? (candle_body / candle_range) * 100 : 0
+
+is_near_high = close > (high - (high - low) * 0.2)
+is_near_low  = close < (low + (high - low) * 0.2)
+
+is_strong_breakout_bull = not use_anti_fake or (body_perc >= min_body_perc and (vol_expanding or is_high_vol) and close > high[1] and is_near_high)
+is_strong_breakout_bear = not use_anti_fake or (body_perc >= min_body_perc and (vol_expanding or is_high_vol) and close < low[1] and is_near_low)
+
+// Fake Breakout (FBO) Logic - Detection of Structure Sweeps with Wick Confirmation
+wick_top_perc = candle_range != 0 ? ((high - math.max(open, close)) / candle_range) * 100 : 0
+wick_btm_perc = candle_range != 0 ? ((math.min(open, close) - low) / candle_range) * 100 : 0
+
+is_fbo_bull_val = show_fbo and high > last_hi and close < last_hi and not is_bos_bullish and wick_top_perc >= min_fbo_wick
+is_fbo_bear_val = show_fbo and low < last_lo and close > last_lo and not is_bos_bearish and wick_btm_perc >= min_fbo_wick
+
+plotshape(is_fbo_bull_val, "Fake Bullish Breakout", shape.labeldown, location.abovebar, color.new(color.red, 30), size=size.tiny, text="FBO_BULL", textcolor=color.white)
+plotshape(is_fbo_bear_val, "Fake Bearish Breakout", shape.labelup, location.belowbar, color.new(color.green, 30), size=size.tiny, text="FBO_BEAR", textcolor=color.white)
+
+// ==========================================
+// SIGNALS & LOGIC
+// ==========================================
+is_engulfing_bull = close > open[1] and open < close[1] and close > open
+is_engulfing_bear = close < open[1] and open > close[1] and close < open
+
+session_gate = not use_session_filter or is_in_session
+htf_gate = not use_mtf or htf_bullish
+
+buy_signal = is_bullish_trend and rsi > 40 and macd_bullish and is_high_vol and session_gate and is_strong_breakout_bull and htf_gate
+sell_signal = is_bearish_trend and rsi < 60 and macd_bearish and is_high_vol and session_gate and is_strong_breakout_bear and (not htf_gate or not use_mtf)
+
+// --- POWERFUL SIGNAL COMPOSITE ---
+// Requirements: RSI Div (Reg/Hidden) + Fib 50% + Structure (Wave 3/5) + OB/OB Entry + Volume
+
+// Check if current price is within any active Bullish OB
+is_in_ob_bull = false
+if array.size(ob_bull_boxes) > 0
+    for i = 0 to array.size(ob_bull_boxes) - 1
+        box b = array.get(ob_bull_boxes, i)
+        if low <= box.get_top(b) and high >= box.get_bottom(b)
+            is_in_ob_bull := true
+            break
+
+// Check if current price is within any active Bearish OB
+is_in_ob_bear = false
+if array.size(ob_bear_boxes) > 0
+    for i = 0 to array.size(ob_bear_boxes) - 1
+        box b = array.get(ob_bear_boxes, i)
+        if high >= box.get_bottom(b) and low <= box.get_top(b)
+            is_in_ob_bear := true
+            break
+
+is_powerful_buy = (bull_reg_div or bull_hid_div) and is_at_fib_50_buy and (bullish_wave == 3 or bullish_wave == 5) and is_high_vol and is_in_ob_bull
+is_powerful_sell = (bear_reg_div or bear_hid_div) and is_at_fib_50_sell and (bearish_wave == 3 or bearish_wave == 5) and is_high_vol and is_in_ob_bear
+
+// --- ENTRY LOGIC REASON DETERMINATION ---
+string entry_method_buy = ""
+if buy_signal
+    if is_powerful_buy
+        entry_method_buy := "Powerful Convergence"
+    else if bull_reg_div or bull_hid_div
+        entry_method_buy := "RSI Divergence"
+    else if is_at_fib_50_buy
+        entry_method_buy := "Fib 50% Level"
+    else if is_in_ob_bull
+        entry_method_buy := "Order Block Ref"
+    else if is_strong_breakout_bull
+        entry_method_buy := "Structure Breakout"
+    else if is_choch_bullish
+        entry_method_buy := "CHOCH Reversal"
+    else
+        entry_method_buy := "Trend Confirmation"
+
+string entry_method_sell = ""
+if sell_signal
+    if is_powerful_sell
+        entry_method_sell := "Powerful Convergence"
+    else if bear_reg_div or bear_hid_div
+        entry_method_sell := "RSI Divergence"
+    else if is_at_fib_50_sell
+        entry_method_sell := "Fib 50% Level"
+    else if is_in_ob_bear
+        entry_method_sell := "Order Block Ref"
+    else if is_strong_breakout_bear
+        entry_method_sell := "Structure Breakout"
+    else if is_choch_bearish
+        entry_method_sell := "CHOCH Reversal"
+    else
+        entry_method_sell := "Trend Confirmation"
+
+plotshape(is_powerful_buy, "POWERFUL BUY", shape.labelup, location.belowbar, color.new(color.lime, 0), size=size.normal, text="POWERFUL SIGNAL (FIB+RSI+STR+OB)", textcolor=color.black)
+plotshape(is_powerful_sell, "POWERFUL SELL", shape.labeldown, location.abovebar, color.new(color.fuchsia, 0), size=size.normal, text="POWERFUL SIGNAL (FIB+RSI+STR+OB)", textcolor=color.white)
+
+if buy_signal and show_entry_reason
+    label.new(bar_index, low, "BUY: " + entry_method_buy, style=label.style_label_up, color=color.new(color.green, 20), textcolor=color.white, size=size.small, yloc=yloc.belowbar)
+if sell_signal and show_entry_reason
+    label.new(bar_index, high, "SELL: " + entry_method_sell, style=label.style_label_down, color=color.new(color.red, 20), textcolor=color.white, size=size.small, yloc=yloc.abovebar)
+
+plotshape(buy_signal, "BUY", shape.triangleup, location.belowbar, color.green, size=size.small, text="BUY", textcolor=color.green)
+plotshape(sell_signal, "SELL", shape.triangledown, location.abovebar, color.red, size=size.small, text="SELL", textcolor=color.red)
+
+// ==========================================
+// BACKTEST ENGINE (INDICATOR MODE SIMULATOR)
+// ==========================================
+var float current_balance = init_balance
+var float max_balance = init_balance
+var float max_drawdown = 0.0
+var float gross_profit = 0.0
+var float gross_loss = 0.0
+var int total_trades = 0
+var int wins = 0
+var int losses = 0
+
+// Simple state machine to track active trade simulation
+var bool in_long = false
+var bool in_short = false
+var float sim_entry_price = 0.0
+var float sim_sl_price = 0.0
+var float sim_tp_price = 0.0
+var int sim_entry_bar = 0
+
+// Tracking current trade context
+var string trade_sess = ""
+var string trade_trend = ""
+
+// Active Trade Marker
+var label active_marker = na
+
+if buy_signal and not in_long and not in_short
+    in_long := true
+    sim_entry_price := close
+    sim_entry_bar := bar_index
+    sim_sl_price := low - (atr * atr_mult)
+    float risk = math.abs(sim_entry_price - sim_sl_price)
+    sim_tp_price := sim_entry_price + (risk * tp2_rr)
+    total_trades += 1
+    trade_sess := is_asian ? "Asian" : is_london ? "London" : is_nys ? "NY" : "Other"
+    trade_trend := is_bullish_trend ? "Bullish" : "Bearish"
+    if show_active_marker
+        active_marker := label.new(bar_index, low, "ENTRY ACTIVE FROM HERE (BUY)", style=label.style_label_up, color=color.new(color.blue, 20), textcolor=color.white, size=size.small)
+
+if sell_signal and not in_short and not in_long
+    in_short := true
+    sim_entry_price := close
+    sim_entry_bar := bar_index
+    sim_sl_price := high + (atr * atr_mult)
+    float risk = math.abs(sim_sl_price - sim_entry_price)
+    sim_tp_price := sim_entry_price - (risk * tp2_rr)
+    total_trades += 1
+    trade_sess := is_asian ? "Asian" : is_london ? "London" : is_nys ? "NY" : "Other"
+    trade_trend := is_bullish_trend ? "Bullish" : "Bearish"
+    if show_active_marker
+        active_marker := label.new(bar_index, high, "ENTRY ACTIVE FROM HERE (SELL)", style=label.style_label_down, color=color.new(color.blue, 20), textcolor=color.white, size=size.small)
+
+// Update Active Marker Position
+if show_active_marker and (in_long or in_short) and not na(active_marker)
+    label.set_x(active_marker, bar_index)
+    label.set_y(active_marker, in_long ? low : high)
+
+// Reset Active Marker on trade close
+if (in_long or in_short)
+    bool exit_long = in_long and (low <= sim_sl_price or high >= sim_tp_price)
+    bool exit_short = in_short and (high >= sim_sl_price or low <= sim_tp_price)
+    if exit_long or exit_short
+        if not na(active_marker)
+            label.delete(active_marker)
+            active_marker := na
+
+
+// Performance Breakdown Records
+var int asian_trades = 0
+var int asian_wins = 0
+var int london_trades = 0
+var int london_wins = 0
+var int ny_trades = 0
+var int ny_wins = 0
+var int trend_bull_trades = 0
+var int trend_bull_wins = 0
+var int trend_bear_trades = 0
+var int trend_bear_wins = 0
+
+// Check Exits
+if in_long
+    if low <= sim_sl_price
+        losses += 1
+        float loss_amt = (current_balance * risk_per_trade / 100)
+        current_balance -= loss_amt
+        gross_loss += loss_amt
+        // Recording breakdown
+        if trade_sess == "Asian" 
+            asian_trades += 1
+        else if trade_sess == "London"
+            london_trades += 1
+        else if trade_sess == "NY"
+            ny_trades += 1
+        
+        if trade_trend == "Bullish"
+            trend_bull_trades += 1
+        else
+            trend_bear_trades += 1
+            
+        in_long := false
+    else if high >= sim_tp_price
+        wins += 1
+        float win_amt = (current_balance * risk_per_trade / 100 * tp2_rr)
+        current_balance += win_amt
+        gross_profit += win_amt
+        // Recording breakdown
+        if trade_sess == "Asian" 
+            asian_trades += 1
+            asian_wins += 1
+        else if trade_sess == "London"
+            london_trades += 1
+            london_wins += 1
+        else if trade_sess == "NY"
+            ny_trades += 1
+            ny_wins += 1
+        
+        if trade_trend == "Bullish"
+            trend_bull_trades += 1
+            trend_bull_wins += 1
+        else
+            trend_bear_trades += 1
+            trend_bear_wins += 1
+            
+        in_long := false
+
+if in_short
+    if high >= sim_sl_price
+        losses += 1
+        float loss_amt = (current_balance * risk_per_trade / 100)
+        current_balance -= loss_amt
+        gross_loss += loss_amt
+        // Recording breakdown
+        if trade_sess == "Asian" 
+            asian_trades += 1
+        else if trade_sess == "London"
+            london_trades += 1
+        else if trade_sess == "NY"
+            ny_trades += 1
+            
+        if trade_trend == "Bullish"
+            trend_bull_trades += 1
+        else
+            trend_bear_trades += 1
+            
+        in_short := false
+    else if low <= sim_tp_price
+        wins += 1
+        float win_amt = (current_balance * risk_per_trade / 100 * tp2_rr)
+        current_balance += win_amt
+        gross_profit += win_amt
+        // Recording breakdown
+        if trade_sess == "Asian" 
+            asian_trades += 1
+            asian_wins += 1
+        else if trade_sess == "London"
+            london_trades += 1
+            london_wins += 1
+        else if trade_sess == "NY"
+            ny_trades += 1
+            ny_wins += 1
+        
+        if trade_trend == "Bullish"
+            trend_bull_trades += 1
+            trend_bull_wins += 1
+        else
+            trend_bear_trades += 1
+            trend_bear_wins += 1
+            
+        in_short := false
+
+// Advanced Metrics
+equity_change = current_balance - current_balance[1]
+equity_ret = (current_balance / current_balance[1]) - 1
+equity_ret := na(equity_ret) ? 0 : equity_ret
+
+sharpe = ta.sma(equity_ret, 100) / ta.stdev(equity_ret, 100) * math.sqrt(252)
+downside_ret = math.min(equity_ret, 0)
+sortino = ta.sma(equity_ret, 100) / ta.stdev(downside_ret, 100) * math.sqrt(252)
+
+// Drawdown Calculation
+max_balance := math.max(max_balance, current_balance)
+float cur_dd = ((max_balance - current_balance) / max_balance) * 100
+max_drawdown := math.max(max_drawdown, cur_dd)
+
+win_rate = total_trades > 0 ? (wins / float(total_trades)) * 100 : 0
+profit_factor = gross_loss > 0 ? gross_profit / gross_loss : gross_profit > 0 ? 99.9 : 0
+net_profit = current_balance - init_balance
+profit_perc = (net_profit / init_balance) * 100
+
+// TP/SL Dynamic Visualizer
+if buy_signal and show_tp_lines
+    float sl = low - (atr * atr_mult)
+    float risk = close - sl
+    float tp1 = close + (risk * tp1_rr)
+    float tp2 = close + (risk * tp2_rr)
+    float tp3 = close + (risk * tp3_rr)
+    line.new(bar_index, sl, bar_index + 10, sl, color=color.red, style=line.style_dashed, width=1)
+    label.new(bar_index + 10, sl, "SL", style=label.style_none, textcolor=color.red, size=size.small)
+    line.new(bar_index, tp1, bar_index + 10, tp1, color=color.green, style=line.style_dotted)
+    label.new(bar_index + 10, tp1, "TP1", style=label.style_none, textcolor=color.green, size=size.small)
+    line.new(bar_index, tp2, bar_index + 10, tp2, color=color.teal, style=line.style_dotted)
+    label.new(bar_index + 10, tp2, "TP2", style=label.style_none, textcolor=color.teal, size=size.small)
+    line.new(bar_index, tp3, bar_index + 10, tp3, color=color.lime, style=line.style_dotted)
+    label.new(bar_index + 10, tp3, "TP3", style=label.style_none, textcolor=color.lime, size=size.small)
+
+if sell_signal and show_tp_lines
+    float sl = high + (atr * atr_mult)
+    float risk = sl - close
+    float tp1 = close - (risk * tp1_rr)
+    float tp2 = close - (risk * tp2_rr)
+    float tp3 = close - (risk * tp3_rr)
+    line.new(bar_index, sl, bar_index + 10, sl, color=color.red, style=line.style_dashed, width=1)
+    label.new(bar_index + 10, sl, "SL", style=label.style_none, textcolor=color.red, size=size.small)
+    line.new(bar_index, tp1, bar_index + 10, tp1, color=color.green, style=line.style_dotted)
+    label.new(bar_index + 10, tp1, "TP1", style=label.style_none, textcolor=color.green, size=size.small)
+    line.new(bar_index, tp2, bar_index + 10, tp2, color=color.teal, style=line.style_dotted)
+    label.new(bar_index + 10, tp2, "TP2", style=label.style_none, textcolor=color.teal, size=size.small)
+    line.new(bar_index, tp3, bar_index + 10, tp3, color=color.lime, style=line.style_dotted)
+    label.new(bar_index + 10, tp3, "TP3", style=label.style_none, textcolor=color.lime, size=size.small)
+
+// ==========================================
+// DASHBOARD PANEL
+// ==========================================
+var table dashboard = table.new(position.top_right, 2, 25, bgcolor=color.new(color.black, 20), border_width=1, border_color=color.gray)
+
+if barstate.islast
+    table.cell(dashboard, 0, 0, "Lashari AI Dashboard", text_color=color.white, text_size=size.small)
+    table.merge_cells(dashboard, 0, 0, 1, 0)
+    
+    table.cell(dashboard, 0, 1, "Trend", text_color=color.white)
+    table.cell(dashboard, 1, 1, is_bullish_trend ? "BULLISH" : is_bearish_trend ? "BEARISH" : "NEUTRAL", text_color = is_bullish_trend ? color.green : is_bearish_trend ? color.red : color.gray)
+    
+    table.cell(dashboard, 0, 2, "HTF Bias (" + htf_val + ")", text_color=color.white)
+    table.cell(dashboard, 1, 2, htf_trend_strength, text_color = htf_bullish ? color.green : color.red)
+    
+    table.cell(dashboard, 0, 3, "Volatility", text_color=color.white)
+    table.cell(dashboard, 1, 3, is_high_vol ? "HIGH" : "NORMAL", text_color = is_high_vol ? color.yellow : color.gray)
+    
+    table.cell(dashboard, 0, 4, "Wave Sequence", text_color=color.white)
+    string pat_status = bullish_wave > 0 ? "IMPULSE " + str.tostring(bullish_wave) + "/5" : bearish_wave > 0 ? "IMPULSE " + str.tostring(bearish_wave) + "/5" : "RETRACING"
+    color pat_color = (bullish_wave == 5 or bearish_wave == 5) ? color.lime : (bullish_wave > 0 or bearish_wave > 0) ? color.yellow : color.gray
+    table.cell(dashboard, 1, 4, pat_status, text_color = pat_color)
+
+    int row_offset = 5
+    if show_backtest
+        table.cell(dashboard, 0, row_offset, "--- BACKTEST LAB ---", text_color=color.yellow, bgcolor=color.new(color.yellow, 90))
+        table.merge_cells(dashboard, 0, row_offset, 1, row_offset)
+        row_offset += 1
+        
+        table.cell(dashboard, 0, row_offset, "Win Rate", text_color=color.white, bgcolor=color.new(color.gray, 90))
+        table.cell(dashboard, 1, row_offset, str.tostring(win_rate, "#.##") + "%", text_color = win_rate > 50 ? color.green : color.red, bgcolor=color.new(color.gray, 90))
+        row_offset += 1
+        
+        table.cell(dashboard, 0, row_offset, "Trades (W/L)", text_color=color.white, bgcolor=color.new(color.gray, 90))
+        table.cell(dashboard, 1, row_offset, str.tostring(wins) + " / " + str.tostring(losses), text_color=color.white, bgcolor=color.new(color.gray, 90))
+        row_offset += 1
+        
+        table.cell(dashboard, 0, row_offset, "Net ROI", text_color=color.white, bgcolor=color.new(color.gray, 90))
+        table.cell(dashboard, 1, row_offset, str.tostring(profit_perc, "#.##") + "%", text_color = net_profit >= 0 ? color.green : color.red, bgcolor=color.new(color.gray, 90))
+        row_offset += 1
+
+        table.cell(dashboard, 0, row_offset, "Sharpe / Sortino", text_color=color.white, bgcolor=color.new(color.gray, 90))
+        table.cell(dashboard, 1, row_offset, str.tostring(sharpe, "#.##") + " / " + str.tostring(sortino, "#.##"), text_color=color.white, bgcolor=color.new(color.gray, 90))
+        row_offset += 1
+
+        table.cell(dashboard, 0, row_offset, "--- BREAKDOWN ---", text_color=color.yellow, bgcolor=color.new(color.yellow, 90))
+        table.merge_cells(dashboard, 0, row_offset, 1, row_offset)
+        row_offset += 1
+
+        float asian_wr = asian_trades > 0 ? (asian_wins / float(asian_trades)) * 100 : 0
+        table.cell(dashboard, 0, row_offset, "Asian Session WR", text_color=color.white, bgcolor=color.new(color.gray, 90))
+        table.cell(dashboard, 1, row_offset, str.tostring(asian_wr, "#.##") + "% (" + str.tostring(asian_trades) + ")", text_color=color.white, bgcolor=color.new(color.gray, 90))
+        row_offset += 1
+
+        float london_wr = london_trades > 0 ? (london_wins / float(london_trades)) * 100 : 0
+        table.cell(dashboard, 0, row_offset, "London Session WR", text_color=color.white, bgcolor=color.new(color.gray, 90))
+        table.cell(dashboard, 1, row_offset, str.tostring(london_wr, "#.##") + "% (" + str.tostring(london_trades) + ")", text_color=color.white, bgcolor=color.new(color.gray, 90))
+        row_offset += 1
+
+        float ny_wr = ny_trades > 0 ? (ny_wins / float(ny_trades)) * 100 : 0
+        table.cell(dashboard, 0, row_offset, "NY Session WR", text_color=color.white, bgcolor=color.new(color.gray, 90))
+        table.cell(dashboard, 1, row_offset, str.tostring(ny_wr, "#.##") + "% (" + str.tostring(ny_trades) + ")", text_color=color.white, bgcolor=color.new(color.gray, 90))
+        row_offset += 1
+
+        float bull_wr = trend_bull_trades > 0 ? (trend_bull_wins / float(trend_bull_trades)) * 100 : 0
+        table.cell(dashboard, 0, row_offset, "Bullish Trend WR", text_color=color.white, bgcolor=color.new(color.gray, 90))
+        table.cell(dashboard, 1, row_offset, str.tostring(bull_wr, "#.##") + "% (" + str.tostring(trend_bull_trades) + ")", text_color=color.white, bgcolor=color.new(color.gray, 90))
+        row_offset += 1
+
+        float bear_wr = trend_bear_trades > 0 ? (trend_bear_wins / float(trend_bear_trades)) * 100 : 0
+        table.cell(dashboard, 0, row_offset, "Bearish Trend WR", text_color=color.white, bgcolor=color.new(color.gray, 90))
+        table.cell(dashboard, 1, row_offset, str.tostring(bear_wr, "#.##") + "% (" + str.tostring(trend_bear_trades) + ")", text_color=color.white, bgcolor=color.new(color.gray, 90))
+        row_offset += 1
+
+    table.cell(dashboard, 0, row_offset, "--- AI SCORES ---", text_color=color.yellow)
+    table.merge_cells(dashboard, 0, row_offset, 1, row_offset)
+    row_offset += 1
+    
+    float conf_score = 0
+    if is_bullish_trend or is_bearish_trend
+        conf_score += 20
+    if rsi > 40 and rsi < 60
+        conf_score += 10
+    else if (rsi < 40 and is_bullish_trend) or (rsi > 60 and is_bearish_trend)
+        conf_score += 30
+    if is_high_vol
+        conf_score += 15
+    if macd_bullish or macd_bearish
+        conf_score += 10
+    if htf_bullish == is_bullish_trend
+        conf_score += 10
+    if (is_fbo_bull_val or is_fbo_bear_val)
+        conf_score -= 15 // Confidence drops on fakeouts
+
+    table.cell(dashboard, 0, row_offset, "AI Confidence", text_color=color.white)
+    table.cell(dashboard, 1, row_offset, str.tostring(conf_score) + "%", text_color = conf_score > 75 ? color.green : conf_score > 50 ? color.yellow : color.red)
+    row_offset += 1
+    
+    table.cell(dashboard, 0, row_offset, "Signal Stability", text_color=color.white)
+    table.cell(dashboard, 1, row_offset, (is_fbo_bull_val or is_fbo_bear_val) ? "UNSTABLE" : "STABLE", text_color = (is_fbo_bull_val or is_fbo_bear_val) ? color.red : color.green)
+
+// ==========================================
+// ALERTS
+// ==========================================
+alertcondition(alert_signals and buy_signal, "Buy Alert", "Lashari AI: Bullish Confirmation Found!")
+alertcondition(alert_signals and sell_signal, "Sell Alert", "Lashari AI: Bearish Confirmation Found!")
+
+// SMC Alerts
+alertcondition(alert_bos and (is_bos_bullish or is_bos_bearish), "SMC: BOS/CHOCH Alert", "Lashari AI: Break of Structure / CHOCH Detected!")
+alertcondition(alert_ob and (is_bos_bullish or is_bos_bearish), "SMC: New Order Block", "Lashari AI: New Order Block Formed!")
+alertcondition(alert_fvg and (is_fvg_bull or is_fvg_bear), "SMC: FVG Detected", "Lashari AI: Fair Value Gap Identified!")
+alertcondition(alert_fbo and (is_fbo_bull_val or is_fbo_bear_val), "Price Action: Fake Breakout", "Lashari AI: Fake Breakout / Structure Sweep Detected!")
+
+// Session Alerts
+alertcondition(alert_session and is_asian_start, "Session: Asian Start", "Lashari AI: Asian Session is now Active!")
+alertcondition(alert_session and is_london_start, "Session: London Start", "Lashari AI: London Session is now Active!")
+alertcondition(alert_session and is_nys_start, "Session: NY Start", "Lashari AI: New York Session is now Active!")
+
+// RSI Divergence Alerts
+alertcondition(alert_rsi_div and bull_reg_div, "RSI: Bullish Regular Divergence", "Lashari AI: Bullish Regular RSI Divergence Detected!")
+alertcondition(alert_rsi_div and bull_hid_div, "RSI: Bullish Hidden Divergence", "Lashari AI: Bullish Hidden RSI Divergence Detected!")
+alertcondition(alert_rsi_div and bear_reg_div, "RSI: Bearish Regular Divergence", "Lashari AI: Bearish Regular RSI Divergence Detected!")
+alertcondition(alert_rsi_div and bear_hid_div, "RSI: Bearish Hidden Divergence", "Lashari AI: Bearish Hidden RSI Divergence Detected!")
